@@ -1,0 +1,12 @@
+Output:
+
+Expected:
+
+Error: Traceback (most recent call last): File "/tmp/tmptdyxj4k1.py", line 19, in <module> parsed_input = ast.literal_eval(test_case["input"]) ^^^ NameError: name 'ast' is not defined. Did you forget to import 'ast'?
+
+also 
+
+help
+Okay, I see you're working on reversing a list in-place! That's a good challenge. I noticed your current code just prints `list` (which might cause an error since `list` is a built-in type). Also, the `pass` statement means the function doesn't actually do anything yet. Let's start with the core idea. To reverse a list in-place, you'll want to swap elements from the beginning and the end of the list, working your way towards the middle. Here are some questions to get you thinking: 1. **How can you access elements at the beginning and end of the list simultaneously?** Think about using indices. 2. **How do you swap two elements in a list?** (e.g., how would you swap the elements at index `i` and index `j` in `lst`?) 3. **How do you determine when you've reached the middle of the list and should stop swapping?** Think about the relationship between the indices you're using. I recommend focusing on these points. Let me know how you want to proceed, and I'll give you more specific guidance!
+
+chat is not markdown we need it in makrdown to properly see the output gennerated gu llm 

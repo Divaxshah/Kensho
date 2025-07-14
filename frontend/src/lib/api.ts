@@ -309,12 +309,57 @@ export async function streamChatMessage(message: string, sessionId: string, onTo
     if (done) break
     onToken(decoder.decode(value))
   }
-  // After stream completes, fetch latest chat entry to obtain sources & confidence
-  try {
-    const info = await getSessionInfo(sessionId)
-    const chat = info.session.chat_history || []
-    return chat[chat.length - 1] // return full chat entry
-  } catch {
-    return null
-  }
+}
+
+// Coding Challenges
+export async function generateCodingQuestion(topic: string, difficulty: string, numQuestions: number): Promise<any> {
+    const response = await fetch(`${API_BASE_URL}/coding/generate`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ topic, difficulty, num_questions: numQuestions }),
+    });
+    if (!response.ok) {
+        throw new Error('Failed to generate coding question');
+    }
+    return response.json();
+}
+
+export async function runCode(code: string, question: any, sessionId: string, numTestCases: number | null = null): Promise<any> {
+    const response = await fetch(`${API_BASE_URL}/coding/run`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            code,
+            question,
+            session_id: sessionId,
+            num_test_cases: numTestCases,
+        }),
+    });
+    if (!response.ok) {
+        throw new Error('Failed to run code');
+    }
+    return response.json();
+}
+
+export async function getTutorHelp(code: string, question: any, chatHistory: any[], sessionId: string): Promise<any> {
+    const response = await fetch(`${API_BASE_URL}/coding/tutor`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            code,
+            question,
+            chat_history: chatHistory,
+            session_id: sessionId,
+        }),
+    });
+    if (!response.ok) {
+        throw new Error('Failed to get tutor help');
+    }
+    return response.json();
 } 

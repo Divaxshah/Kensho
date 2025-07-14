@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
-import { Upload, MessageCircle, BookOpen, Brain, Download, FileText, Youtube, Send, Loader2, AlertCircle, History, Trash2, Home, Plus, X, Map, Lightbulb, FileSearch, Copy, Maximize2, Minimize2, Eye, Volume2, Zap, ZoomIn, ZoomOut } from 'lucide-react'
+import { Upload, MessageCircle, BookOpen, Brain, Download, FileText, Youtube, Send, Loader2, AlertCircle, History, Trash2, Home, Plus, X, Map, Lightbulb, FileSearch, Copy, Maximize2, Minimize2, Eye, Volume2, Zap, ZoomIn, ZoomOut, Code } from 'lucide-react'
 import * as api from '@/lib/api'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -793,6 +793,14 @@ export default function KenshoPage() {
                 <h4 className="font-medium text-white mb-2 text-lg">YouTube URL</h4>
                 <p className="text-slate-400">Transcribe and analyze videos</p>
             </button>
+            <a 
+                href="/coding"
+                className="bg-slate-800/50 border-2 border-dashed border-slate-600 hover:border-yellow-400 rounded-xl p-8 text-center transition-all hover:bg-slate-800/70 block"
+              >
+                <Code className="h-12 w-12 text-yellow-400 mx-auto mb-4" />
+                <h4 className="font-medium text-white mb-2 text-lg">Coding Challenges</h4>
+                <p className="text-slate-400">Practice coding with an AI tutor</p>
+              </a>
           </div>
         </div>
 

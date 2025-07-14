@@ -16,6 +16,7 @@ import asyncio
 from pathlib import Path
 import re
 import shutil
+import ast # Added for literal_eval
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,6 +29,7 @@ from kensho.document_processor import DocumentProcessor
 from kensho.vector_store import KenshoVectorStore
 from kensho.ai_assistant import KenshoAIAssistant
 from kensho.agent import get_agent_for_session
+from kensho.coding_challenges import CodingChallenges
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -51,6 +53,7 @@ app.add_middleware(
 doc_processor = DocumentProcessor()
 vector_store = KenshoVectorStore()
 ai_assistant = KenshoAIAssistant()
+coding_challenges = CodingChallenges()
 
 # In-memory session storage (in production, use Redis or database)
 sessions: Dict[str, Dict[str, Any]] = {}
@@ -87,6 +90,23 @@ class ExportRequest(BaseModel):
     export_options: List[str]
 
 class MindMapRequest(BaseModel):
+    session_id: str
+
+class CodingChallengeRequest(BaseModel):
+    topic: str
+    difficulty: str = "basic"
+    num_questions: int = 1
+
+class CodeRunRequest(BaseModel):
+    code: str
+    question: dict
+    session_id: str
+    num_test_cases: Optional[int] = None
+
+class CodingTutorRequest(BaseModel):
+    code: str
+    question: dict
+    chat_history: list
     session_id: str
 
 # Utility functions
@@ -153,6 +173,156 @@ async def get_session_info(session_id: str):
             "quizzes": len(session['quizzes'])
         }
     }
+
+@app.post("/coding/generate")
+async def generate_coding_question(request: CodingChallengeRequest):
+    """Generate a coding question using the LLM."""
+    prompt = f"""Generate {request.num_questions} Python coding question(s) for a {request.difficulty} level student on the topic of {request.topic}.
+
+    Provide the following in a JSON format: A list of JSON objects, each with:
+    - title: A short, descriptive title for the problem.
+    - description: A clear explanation of the problem.
+    - examples: At least two examples with inputs and expected outputs.
+    - constraints: A list of constraints for the input values.
+    - test_cases: A list of at least 5 test cases, including edge cases, in a JSON format with 'input' and 'output' keys.
+    - starting_code: A basic Python function signature for the problem, including comments for user to fill in.
+    """
+
+    try:
+        response = ai_assistant.client.chat.completions.create(
+            model=ai_assistant.default_model,
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that generates coding questions."},
+                {"role": "user", "content": prompt}
+            ],
+            response_format={"type": "json_object"}
+        )
+        question_data = json.loads(response.choices[0].message.content)
+        # Ensure it's always a list, even if only one question is generated
+        if not isinstance(question_data, list):
+            question_data = [question_data]
+        return question_data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate coding question: {str(e)}")
+
+@app.post("/coding/run")
+async def run_coding_challenge(request: CodeRunRequest):
+    """Run user's code against test cases."""
+    question = request.question
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+
+    test_cases_to_run = question["test_cases"]
+    if request.num_test_cases is not None and request.num_test_cases > 0:
+        test_cases_to_run = test_cases_to_run[:request.num_test_cases]
+
+    results = []
+    for i, test_case in enumerate(test_cases_to_run):
+        with tempfile.NamedTemporaryFile(mode='w+', suffix='.py', delete=False) as tmp_file:
+            # Create a runnable script
+            input = test_case["input"]
+            output = test_case["output"]
+            script_content = f'''
+{request.code}
+
+# Test case execution
+import json
+import ast
+
+# Inject input and output as JSON strings
+_input_json_str = {json.dumps(input)}
+_output_json_str = {json.dumps(output)}
+
+# Parse them into Python objects
+input_val = json.loads(_input_json_str)
+expected_output_val = json.loads(_output_json_str)
+
+# Assuming the function to test is the first one defined in the user's code
+func_to_test = None
+for name, obj in list(globals().items()):
+    if callable(obj) and not name.startswith("__"):
+        func_to_test = obj
+        break
+
+_result = None
+if func_to_test:
+    # Call the function with unpacked arguments if it's a dictionary, otherwise pass directly
+    if isinstance(input_val, dict):
+        _result = func_to_test(**input_val)
+    else:
+        _result = func_to_test(input_val)
+
+    # Print the actual result and expected value as JSON
+    print(json.dumps({{"output": _result, "expected": expected_output_val}}))
+'''
+            tmp_file.write(script_content)
+            tmp_file_path = tmp_file.name
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                'python', tmp_file_path,
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await proc.communicate()
+
+            if proc.returncode == 0:
+                script_output = json.loads(stdout.decode().strip())
+                output = script_output["output"]
+                expected = script_output["expected"]
+                passed = (output == expected)
+                results.append({
+                    "test_case": i + 1,
+                    "passed": passed,
+                    "output": output,
+                    "expected": expected
+                })
+            else:
+                results.append({
+                    "test_case": i + 1,
+                    "passed": False,
+                    "error": stderr.decode()
+                })
+        except Exception as e:
+            results.append({
+                "test_case": i + 1,
+                "passed": False,
+                "error": str(e)
+            })
+        finally:
+            os.unlink(tmp_file_path)
+
+    return {"results": results}
+
+@app.post("/coding/tutor")
+async def coding_tutor(request: CodingTutorRequest):
+    """Chat with the AI tutor for hints and guidance."""
+    prompt = f"""You are a Python coding tutor. A student is trying to solve the following problem:
+
+    **Problem:** {request.question['title']}
+    **Description:** {request.question['description']}
+
+    The student has written the following code:
+    ```python
+    {request.code}
+    ```
+
+    The user's chat history is:
+    {request.chat_history}
+
+    Your role is to guide the student to the correct solution without giving the answer directly. Provide hints, ask leading questions, and help them understand the concepts involved.
+    """
+
+    try:
+        response = ai_assistant.client.chat.completions.create(
+            model=ai_assistant.default_model,
+            messages=[
+                {"role": "system", "content": "You are a helpful and encouraging coding tutor."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        return {"response": response.choices[0].message.content}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get help from the tutor: {str(e)}")
 
 @app.post("/upload/pdf")
 async def upload_pdf(file: UploadFile = File(...), session_id: str = Form(None)):

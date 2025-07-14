@@ -47,3 +47,5 @@ sessions/
 data/
 # End Generation Here
 # End of Selection
+
+node_modules
